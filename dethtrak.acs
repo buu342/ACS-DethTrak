@@ -1,0 +1,209 @@
+//#library "dethtrak"
+#include "zcommon.acs"
+
+
+/*===================================================================================================
+										   Definitions
+===================================================================================================*/
+
+#define DUMMY ""		// Needed to prevent text bugs from ocurring
+#define VERSION "1.0"
+
+#define MAXPLAYERS 64	// No need to change unless Zandronum decides to use 128 bits
+
+// HUDMessage ID's
+#define MSGID_CONSOLE -1
+
+// GameState definitions. Needed to compile this code for certain ACC versions.
+#define GAMESTATE_UNSPECIFIED -1
+#define GAMESTATE_WAITFORPLAYERS 0
+#define GAMESTATE_COUNTDOWN 1
+#define GAMESTATE_INPROGRESS 2
+#define GAMESTATE_INRESULTSEQUENCE 3
+
+
+/*===================================================================================================
+										Global Variables
+===================================================================================================*/
+
+bool player_alive[MAXPLAYERS];		// A list of all the players who are alive
+int player_deathorder[MAXPLAYERS];	// A list (from descending order) of who died first
+
+global bool 1: newround; // Needs to be an actual global because OPEN scripts are run at the start of every round. Thanks Zandronum :))))))
+
+
+/*===================================================================================================
+										DethTrak Scripts
+===================================================================================================*/
+
+// Initialize DethTrak
+Script "DethTrak_Initialize" OPEN
+{
+	// Start the main logic script if it's not already started
+	ACS_NamedExecute("DethTrak_Logic", 0);
+}
+
+// Let people know this server uses DethTrak
+Script "DethTrak_Advertise" ENTER
+{
+	if (GetUserCVar(PlayerNumber(), "dethtrak_advertise"))
+	{
+		SetUserCVar(PlayerNumber(), "dethtrak_advertise", false);
+		DethTrak_PrintConsole(StrParam(s:"  This server is using DethTrak\n",
+			s:"           Version ", s:VERSION,
+			s:"\n    Created by \cqB\csu\cdu\cq3\cs4\cd2\c- for MDF"));
+	}
+}
+
+// Handle the DethTrak logic when a player dies
+Script "DethTrak_DetectDeath" DEATH
+{
+	// Don't do this unless we're actually playing a game
+	if (GetGameModeState() == GAMESTATE_COUNTDOWN)
+		terminate;
+
+	// If the dying player is out of lives, add him to the death list
+	if (player_alive[PlayerNumber()] && GetPlayerLivesLeft(PlayerNumber()) == 0)
+		DethTrak_AddDeath(PlayerNumber());
+}
+
+// Main Logic
+Script "DethTrak_Logic" (void)
+{
+	switch(GetGameModeState())
+	{
+		case GAMESTATE_COUNTDOWN:
+			newround = true;
+			break;
+		case GAMESTATE_INPROGRESS:
+			if (newround)
+			{
+				newround = false;
+
+				// Initialize DethTrak
+				DethTrak_Reset();
+				DethTrak_PrintConsoleBold(StrParam(s:"A new round has begun!"));
+			}
+			break;
+		case GAMESTATE_INRESULTSEQUENCE:
+			if (!newround)
+			{
+				newround = true;
+
+				// Print the list of deaths
+				DethTrak_PrintList();
+			}
+			break;
+	}
+
+	// Restart this script
+	delay(1);
+	restart;
+}
+
+
+/*===================================================================================================
+										DethTrak Functions
+===================================================================================================*/
+
+/*
+	DethTrak_Reset
+
+	Reset the player_deathorder and player_alive array.
+*/
+function void DethTrak_Reset(void)
+{
+	int i;
+	for (i=0; i<MAXPLAYERS; i++)
+	{
+		player_deathorder[i] = -1;
+		if (GetPlayerLivesLeft(i) >= 0 && !PlayerIsSpectator(i))
+			player_alive[i] = true;
+	}
+}
+
+
+/*
+	DethTrak_AddDeath
+
+	Add a player to the death list and annouce their death
+	Argument 0 - The playernumber of the player to add to the death list
+*/
+function void DethTrak_AddDeath(int plynum)
+{
+	// Mark the player as dead and announce their demise
+	player_alive[plynum] = false;
+	DethTrak_PrintConsoleBold(StrParam(n:plynum+1, s:" is out of lives."));
+
+	// Find the first empty slot in the deathorder array and add the playernumber to it
+	int i;
+	for (i=0; i<MAXPLAYERS; i++)
+	{
+		if (player_deathorder[i] == -1)
+		{
+			player_deathorder[i] = plynum;
+			break;
+		}
+	}
+}
+
+
+/*
+	DethTrak_GetWinner
+
+	Return the last surviving player.
+	Returns - The PlayerNumber of the last surviving player, or -1 if there is none.
+*/
+function int DethTrak_GetWinner(void)
+{
+	// Find the first player that is alive (supposedly the only one)
+	int i;
+	for (i=0; i<MAXPLAYERS; i++)
+		if (player_alive[i])
+			return i;
+
+	// We have a problem!
+	return -1;
+}
+
+
+/*
+	DethTrak_PrintConsole
+
+	Print to the console of the activator using the DethTrak format
+	Argument 0 - The message to print
+*/
+function void DethTrak_PrintConsole(str msg)
+{
+	HudMessage(s:msg; HUDMSG_LOG, MSGID_CONSOLE, CR_BLACK, -1.0, -1.0, 0.0, 0.0);
+}
+
+
+/*
+	DethTrak_PrintConsoleBold
+
+	Print to everyone's console using the DethTrak format
+	Argument 0 - The message to print
+*/
+function void DethTrak_PrintConsoleBold(str msg)
+{
+	HudMessageBold(s:msg; HUDMSG_LOG, MSGID_CONSOLE, CR_BLACK, -1.0, -1.0, 0.0, 0.0);
+}
+
+
+/*
+	DethTrak_PrintList
+
+	Generate the DethTrak list and print it
+*/
+function void DethTrak_PrintList(void)
+{
+	str msg = StrParam(s:"Ranking (from winner to first to die):\n", s:"1 - ", n:DethTrak_GetWinner()+1, s:"\n");
+
+	int i;
+	int j=2;
+	for (i=MAXPLAYERS-1; i>=0; i--)
+		if (player_deathorder[i] != -1)
+			msg = StrParam(s:msg, d:j++, s:" - ", n:player_deathorder[i]+1, s:"\n");
+	DethTrak_PrintConsole(msg);
+}
