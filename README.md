@@ -6,5 +6,5 @@ This is meant for LMS games where players have more than one life, but will work
 This WAD requested by the MDF community, for their LMS competitions.<br/><br/>
 
 ### How to use
-**1)** Include this WAD in your server's wad list.
+**1)** Include this WAD in your server's wad list.<br/>
 **2)** At the end of every LMS round, check the console to see the death list.
