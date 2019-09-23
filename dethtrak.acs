@@ -1,4 +1,4 @@
-//#library "dethtrak"
+#library "dethtrak"
 #include "zcommon.acs"
 
 
@@ -55,7 +55,7 @@ Script "DethTrak_Advertise" ENTER
 	}
 }
 
-// Handle the DethTrak logic when a player dies
+// Manage DethTrak when a player dies
 Script "DethTrak_DetectDeath" DEATH
 {
 	// Don't do this unless we're actually playing a game
@@ -151,7 +151,8 @@ function void DethTrak_AddDeath(int plynum)
 /*
 	DethTrak_GetWinner
 
-	Return the last surviving player.
+	Return the last surviving player. Doesn't check for draws. Honestly, this should be
+        a default Zandronum function...
 	Returns - The PlayerNumber of the last surviving player, or -1 if there is none.
 */
 function int DethTrak_GetWinner(void)
