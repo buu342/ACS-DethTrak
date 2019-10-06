@@ -12,7 +12,7 @@ This WAD requested by the MDF community, for their LMS competitions.<br/><br/>
 ### Changelog
 **Version 1.1**
 * Added support for draw matches (No man standing)
-* Added support for timeout matches (multiple men standing)<br/><br/>
+* Added support for timeout matches (multiple men standing)
 
 **Version 1.0**
 * Initial release
