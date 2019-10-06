@@ -7,7 +7,7 @@
 ===================================================================================================*/
 
 #define DUMMY ""		// Needed to prevent text bugs from ocurring
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 #define MAXPLAYERS 64	// No need to change unless Zandronum decides to use 128 bits
 
@@ -21,6 +21,14 @@
 #define GAMESTATE_INPROGRESS 2
 #define GAMESTATE_INRESULTSEQUENCE 3
 
+// Player definitions
+#define PLAYER_NOTINGAME -1
+
+// Game over reasons
+#define OVER_WINNER 0  // Single survivor
+#define OVER_DRAW 1    // No survivors
+#define OVER_TIMEOUT 2 // Multiple survivors
+
 
 /*===================================================================================================
 										Global Variables
@@ -28,6 +36,7 @@
 
 bool player_alive[MAXPLAYERS];		// A list of all the players who are alive
 int player_deathorder[MAXPLAYERS];	// A list (from descending order) of who died first
+int game_alivecount;				// The total number of people that were alive last game tick. Needed for draw games.
 
 global bool 1: newround; // Needs to be an actual global because OPEN scripts are run at the start of every round. Thanks Zandronum :))))))
 
@@ -55,7 +64,7 @@ Script "DethTrak_Advertise" ENTER
 	}
 }
 
-// Manage DethTrak when a player dies
+// Handle the DethTrak logic when a player dies
 Script "DethTrak_DetectDeath" DEATH
 {
 	// Don't do this unless we're actually playing a game
@@ -70,6 +79,8 @@ Script "DethTrak_DetectDeath" DEATH
 // Main Logic
 Script "DethTrak_Logic" (void)
 {
+	int alivecount=0;
+
 	switch(GetGameModeState())
 	{
 		case GAMESTATE_COUNTDOWN:
@@ -96,6 +107,15 @@ Script "DethTrak_Logic" (void)
 			break;
 	}
 
+	// Count how many people were alive at the end of this tick
+	for (int i=0; i<MAXPLAYERS; i++)
+		if (player_alive[i])
+			alivecount++;
+
+	// Set the global alivecount to that value (for figuring out who were the last alive in draw games)
+	if (alivecount != 0)
+		game_alivecount = alivecount;
+
 	// Restart this script
 	delay(1);
 	restart;
@@ -106,29 +126,28 @@ Script "DethTrak_Logic" (void)
 										DethTrak Functions
 ===================================================================================================*/
 
-/*
-	DethTrak_Reset
+/*-------------------------------------------------------------
+                        DethTrak_Reset
 
-	Reset the player_deathorder and player_alive array.
-*/
+Reset the player_deathorder and player_alive array.
+-------------------------------------------------------------*/
 function void DethTrak_Reset(void)
 {
-	int i;
-	for (i=0; i<MAXPLAYERS; i++)
+	for (int i=0; i<MAXPLAYERS; i++)
 	{
-		player_deathorder[i] = -1;
+		player_deathorder[i] = PLAYER_NOTINGAME;
 		if (GetPlayerLivesLeft(i) >= 0 && !PlayerIsSpectator(i))
 			player_alive[i] = true;
 	}
 }
 
 
-/*
-	DethTrak_AddDeath
+/*-------------------------------------------------------------
+                       DethTrak_AddDeath
 
-	Add a player to the death list and annouce their death
-	Argument 0 - The playernumber of the player to add to the death list
-*/
+Add a player to the death list and annouce their death
+Argument 0 - The playernumber of the player to add to the death list
+-------------------------------------------------------------*/
 function void DethTrak_AddDeath(int plynum)
 {
 	// Mark the player as dead and announce their demise
@@ -136,10 +155,9 @@ function void DethTrak_AddDeath(int plynum)
 	DethTrak_PrintConsoleBold(StrParam(n:plynum+1, s:" is out of lives."));
 
 	// Find the first empty slot in the deathorder array and add the playernumber to it
-	int i;
-	for (i=0; i<MAXPLAYERS; i++)
+	for (int i=0; i<MAXPLAYERS; i++)
 	{
-		if (player_deathorder[i] == -1)
+		if (player_deathorder[i] == PLAYER_NOTINGAME)
 		{
 			player_deathorder[i] = plynum;
 			break;
@@ -148,63 +166,147 @@ function void DethTrak_AddDeath(int plynum)
 }
 
 
-/*
-	DethTrak_GetWinner
+/*-------------------------------------------------------------
+                     DethTrak_GetGameOver
 
-	Return the last surviving player. Doesn't check for draws. Honestly, this should be
-        a default Zandronum function...
-	Returns - The PlayerNumber of the last surviving player, or -1 if there is none.
-*/
-function int DethTrak_GetWinner(void)
+Return the reason the game ended.
+Returns - An int containing one of the OVER_* macros.
+-------------------------------------------------------------*/
+function int DethTrak_GetGameOver(void)
 {
 	// Find the first player that is alive (supposedly the only one)
-	int i;
-	for (i=0; i<MAXPLAYERS; i++)
+	int survivors = 0;
+	for (int i=0; i<MAXPLAYERS; i++)
 		if (player_alive[i])
-			return i;
+			survivors++;
 
-	// We have a problem!
+	// Return the reason the game ended
+	switch(survivors)
+	{
+		case 0:
+			return OVER_DRAW;
+		case 1:
+			return OVER_WINNER;
+		default:
+			return OVER_TIMEOUT;
+	}
+
+	// Should never reach here
 	return -1;
 }
 
 
-/*
-	DethTrak_PrintConsole
+/*-------------------------------------------------------------
+                     DethTrak_PrintConsole
 
-	Print to the console of the activator using the DethTrak format
-	Argument 0 - The message to print
-*/
+Print to the console of the activator using the DethTrak format
+Argument 0 - The message to print
+-------------------------------------------------------------*/
 function void DethTrak_PrintConsole(str msg)
 {
 	HudMessage(s:msg; HUDMSG_LOG, MSGID_CONSOLE, CR_BLACK, -1.0, -1.0, 0.0, 0.0);
 }
 
 
-/*
-	DethTrak_PrintConsoleBold
+/*-------------------------------------------------------------
+                   DethTrak_PrintConsoleBold
 
-	Print to everyone's console using the DethTrak format
-	Argument 0 - The message to print
-*/
+Print to everyone's console using the DethTrak format
+Argument 0 - The message to print
+-------------------------------------------------------------*/
 function void DethTrak_PrintConsoleBold(str msg)
 {
 	HudMessageBold(s:msg; HUDMSG_LOG, MSGID_CONSOLE, CR_BLACK, -1.0, -1.0, 0.0, 0.0);
 }
 
 
-/*
-	DethTrak_PrintList
+/*-------------------------------------------------------------
+                      DethTrak_PrintList
 
-	Generate the DethTrak list and print it
-*/
+Generate the DethTrak list and print it
+-------------------------------------------------------------*/
 function void DethTrak_PrintList(void)
 {
-	str msg = StrParam(s:"Ranking (from winner to first to die):\n", s:"1 - ", n:DethTrak_GetWinner()+1, s:"\n");
-
+	str reason;
+	str msg;
 	int i;
-	int j=2;
-	for (i=MAXPLAYERS-1; i>=0; i--)
-		if (player_deathorder[i] != -1)
-			msg = StrParam(s:msg, d:j++, s:" - ", n:player_deathorder[i]+1, s:"\n");
+	int winposition = 1;
+	int gameover = DethTrak_GetGameOver();
+
+	// Figure out WHY the game ended
+	switch (gameover)
+	{
+		case OVER_WINNER:
+			reason = "last man standing.";
+			break;
+		case OVER_DRAW:
+			reason = "no man standing.";
+			break;
+		case OVER_TIMEOUT:
+			reason = "timeout.";
+			int alivenow = 0;
+
+			// Update alive count in case anyone died last frame
+			for (i=0; i<MAXPLAYERS; i++)
+				if (player_alive[i])
+					alivenow++;
+			game_alivecount = alivenow;
+			break;
+	}
+
+	// Set the string to the starting information
+	msg = StrParam(s:"Game over due to ", s:reason, s:"\nRanking (from winner(s) to first to die):\n");
+
+	// Print the final list
+	switch (gameover)
+	{
+		case OVER_WINNER:
+			// Get the singular winner
+			for (i=0; i<MAXPLAYERS; i++)
+			{
+				if (player_alive[i])
+				{
+					msg = StrParam(s:msg, s:"1 - ", n:i+1, s:"\n");
+					break;
+				}
+			}
+
+			// Get the losers
+			for (i=MAXPLAYERS-1; i>=0; i--)
+				if (player_deathorder[i] != PLAYER_NOTINGAME)
+					msg = StrParam(s:msg, d:++winposition, s:" - ", n:player_deathorder[i]+1, s:"\n");
+
+			break;
+		case OVER_TIMEOUT:
+			// Get the alive
+			for (i=0; i<MAXPLAYERS; i++)
+				if (player_alive[i])
+					msg = StrParam(s:msg, d:game_alivecount, s:" - ", n:i+1, s:"\n");
+
+			// Get the dead
+			for (i=MAXPLAYERS-1; i>=0; i--)
+				if (player_deathorder[i] != PLAYER_NOTINGAME)
+					msg = StrParam(s:msg, d:game_alivecount+winposition++, s:" - ", n:player_deathorder[i]+1, s:"\n");
+
+			break;
+		case OVER_DRAW:
+
+			// Get the dead
+			for (i=MAXPLAYERS-1; i>=0; i--)
+				if (player_deathorder[i] != PLAYER_NOTINGAME)
+					msg = StrParam(s:msg, d:max(game_alivecount, winposition++), s:" - ", n:player_deathorder[i]+1, s:"\n");
+
+			break;
+	}
+
+	// Print the final information
 	DethTrak_PrintConsole(msg);
+}
+
+function int max (int a, int b)
+{
+	if (a > b)
+		return a;
+
+	return b;
 }
